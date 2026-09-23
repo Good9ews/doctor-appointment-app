@@ -1,14 +1,16 @@
-const dns = require("dns");
-dns.setServers(["8.8.8.8", "8.8.4.4"]);
-
-
 const express = require("express");
-const dotenv = require("dotenv");
-const connectDB = require("./config/database");
-
-dotenv.config();
+const helmet = require("helmet");
+const authRoutes = require("./routes/authRoutes");
+const errorHandler = require("./middleware/errorHandler");
 
 const app = express();
+
+app.use(helmet());
+
+// Single reverse-proxy hop (e.g. a PaaS router or one Nginx/load-balancer in front of the
+// app). Needed so req.ip reflects the real client, not the proxy -- otherwise every client
+// collapses to one rate-limiter key. Adjust if the real deployment has a different hop count.
+app.set("trust proxy", 1);
 
 app.use(express.json());
 
@@ -19,19 +21,15 @@ app.get("/", (req, res) => {
   });
 });
 
-const PORT = process.env.PORT || 5000;
+app.use("/api/auth", authRoutes);
 
-const startServer = async () => {
-  try {
-    await connectDB();
+app.use((req, res) => {
+  res.status(404).json({
+    success: false,
+    message: "Not found",
+  });
+});
 
-    app.listen(PORT, () => {
-      console.log(`Server running on port ${PORT}`);
-    });
-  } catch (error) {
-    console.error("Failed to start server:", error.message);
-    process.exit(1);
-  }
-};
+app.use(errorHandler);
 
-startServer();
+module.exports = app;
