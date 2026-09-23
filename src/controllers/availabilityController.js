@@ -14,11 +14,9 @@ const getAllAvailability = async (req, res) => {
   } catch (error) {
     console.error("Failed to fetch availability:", error.message);
 
-    return res.status(200).json({
-      success: true,
-      data: [],
-      message:
-        "Availability database is unavailable right now. Returning an empty list.",
+    return res.status(500).json({
+      success: false,
+      message: "Availability database is unavailable right now.",
     });
   }
 };
