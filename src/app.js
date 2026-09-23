@@ -1,10 +1,10 @@
 const dns = require("dns");
 dns.setServers(["8.8.8.8", "8.8.4.4"]);
 
-
 const express = require("express");
 const dotenv = require("dotenv");
 const connectDB = require("./config/database");
+const availabilityRoutes = require("./routes/availabilityRoutes");
 
 dotenv.config();
 
@@ -18,6 +18,8 @@ app.get("/", (req, res) => {
     message: "Doctor Appointment API is running",
   });
 });
+
+app.use("/api/availability", availabilityRoutes);
 
 const PORT = process.env.PORT || 5000;
 
@@ -34,4 +36,8 @@ const startServer = async () => {
   }
 };
 
-startServer();
+if (require.main === module) {
+  startServer();
+}
+
+module.exports = app;
