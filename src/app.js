@@ -5,12 +5,15 @@ dns.setServers(["8.8.8.8", "8.8.4.4"]);
 const express = require("express");
 const dotenv = require("dotenv");
 const connectDB = require("./config/database");
+const appointmentRoutes = require("./routes/appointmentRoutes");
 
 dotenv.config();
 
 const app = express();
 
 app.use(express.json());
+app.use("/api/appointment", appointmentRoutes);
+
 
 app.get("/", (req, res) => {
   res.json({
