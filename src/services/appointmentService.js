@@ -1,4 +1,3 @@
-const mongoose = require("mongoose");
 const Appointment = require("../models/Appointment");
 const Availability = require("../models/Availability");
 const Doctor = require("../models/Doctor");
@@ -41,7 +40,7 @@ const bookAppointment = async (patientId, data) => {
     throw { status: 404, message: "Doctor not found" };
   }
 
-  // 3. Validate availability belongs to this doctor
+  // 3. Validate availability belongs to this doctor and is still available
   const availability = await Availability.findById(availabilityId);
   if (!availability) {
     throw { status: 404, message: "Availability slot not found" };
@@ -51,12 +50,19 @@ const bookAppointment = async (patientId, data) => {
     throw { status: 400, message: "Availability does not belong to this doctor" };
   }
 
+  if (availability.isBooked) {
+    throw {
+      status: 409,
+      message: "This availability slot is already booked",
+    };
+  }
+
   // 4. Basic time validation
   if (timeToMinutes(startTime) >= timeToMinutes(endTime)) {
     throw { status: 400, message: "End time must be after start time" };
   }
 
-  // Optional: Check that requested time falls within the availability window
+  // Check that requested time falls within the availability window
   if (
     timeToMinutes(startTime) < timeToMinutes(availability.startTime) ||
     timeToMinutes(endTime) > timeToMinutes(availability.endTime)
@@ -79,7 +85,7 @@ const bookAppointment = async (patientId, data) => {
       $gte: appointmentDateStart,
       $lte: appointmentDateEnd,
     },
-    status: { $in: ["pending", "confirmed"] }, // only active ones
+    status: { $in: ["pending", "confirmed"] },
   });
 
   const hasConflict = existingAppointments.some((appt) =>
@@ -93,20 +99,26 @@ const bookAppointment = async (patientId, data) => {
     };
   }
 
-  // 6. Optional: Prevent patient from double-booking themselves at same time
-  const patientConflict = await Appointment.findOne({
+  // 6. Prevent patient from double-booking themselves at the same time
+  const patientAppointments = await Appointment.find({
     patient: patientId,
     appointmentDate: {
       $gte: appointmentDateStart,
       $lte: appointmentDateEnd,
     },
     status: { $in: ["pending", "confirmed"] },
-    $expr: {
-      // Simple overlap check can also be done in JS if preferred
-    },
   });
 
-  // You can add similar overlap logic for patient if needed
+  const patientHasConflict = patientAppointments.some((appt) =>
+    timesOverlap(startTime, endTime, appt.startTime, appt.endTime)
+  );
+
+  if (patientHasConflict) {
+    throw {
+      status: 409,
+      message: "You already have an appointment at this time",
+    };
+  }
 
   // 7. Create the appointment
   const appointment = await Appointment.create({
@@ -119,8 +131,9 @@ const bookAppointment = async (patientId, data) => {
     status: "pending",
   });
 
-  // Optional: Mark availability as booked / reduce remaining slots
-  // await Availability.findByIdAndUpdate(availabilityId, { isBooked: true });
+  // 8. Mark the availability slot as booked
+  availability.isBooked = true;
+  await availability.save();
 
   // Populate for response
   await appointment.populate([
@@ -144,14 +157,11 @@ const getMyAppointments = async (userId, role, filters = {}) => {
   if (role === "patient") {
     query.patient = userId;
   } else if (role === "doctor") {
-    // Find the Doctor document linked to this user
     const doctor = await Doctor.findOne({ user: userId });
     if (!doctor) {
       throw { status: 404, message: "Doctor profile not found" };
     }
     query.doctor = doctor._id;
-  } else {
-    // Admin can see all – or restrict as needed
   }
 
   if (status) {
@@ -225,7 +235,6 @@ const updateAppointmentStatus = async (appointmentId, newStatus, userId, role) =
 
   // Authorization rules
   if (role === "patient") {
-    // Patients can only cancel their own pending/confirmed appointments
     if (appointment.patient.toString() !== userId) {
       throw { status: 403, message: "Not authorized" };
     }
@@ -240,18 +249,26 @@ const updateAppointmentStatus = async (appointmentId, newStatus, userId, role) =
     if (!doctor || appointment.doctor.toString() !== doctor._id.toString()) {
       throw { status: 403, message: "Not authorized" };
     }
-    // Doctors can confirm, cancel, or mark completed
-  } else {
-    // Admin can do anything
   }
 
   // Business rules
   if (appointment.status === "completed" || appointment.status === "cancelled") {
-    throw { status: 400, message: `Cannot change status of a ${appointment.status} appointment` };
+    throw {
+      status: 400,
+      message: `Cannot change status of a ${appointment.status} appointment`,
+    };
   }
 
+  const previousStatus = appointment.status;
   appointment.status = newStatus;
   await appointment.save();
+
+  // If the appointment is cancelled, free up the availability slot
+  if (newStatus === "cancelled" && previousStatus !== "cancelled") {
+    await Availability.findByIdAndUpdate(appointment.availability, {
+      isBooked: false,
+    });
+  }
 
   await appointment.populate([
     { path: "patient", select: "name email phone" },
