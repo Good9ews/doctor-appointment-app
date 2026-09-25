@@ -1,8 +1,14 @@
 const express = require("express");
-const { getAllAvailability } = require("../controllers/availabilityController");
+const {
+  getAllAvailability,
+  createAvailability,
+  getAvailabilityByDoctor,
+} = require("../controllers/availabilityController");
 
 const router = express.Router();
 
 router.get("/", getAllAvailability);
+router.get("/doctor/:doctorId", getAvailabilityByDoctor);
+router.post("/", createAvailability);
 
 module.exports = router;
