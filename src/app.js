@@ -1,16 +1,15 @@
-const dns = require("dns");
-dns.setServers(["8.8.8.8", "8.8.4.4"]);
-
-
 const express = require("express");
 const dotenv = require("dotenv");
 const connectDB = require("./config/database");
+const doctorRoutes = require("./routes/doctorRoutes");
 
 dotenv.config();
 
 const app = express();
 
 app.use(express.json());
+
+app.use("/api/doctors", doctorRoutes);
 
 app.get("/", (req, res) => {
   res.json({
