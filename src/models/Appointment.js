@@ -58,4 +58,12 @@ const Appointment = mongoose.model(
   appointmentSchema
 );
 
+
+// Optional indexes for performance
+appointmentSchema.index({ doctor: 1, appointmentDate: 1, startTime: 1 });
+appointmentSchema.index({ patient: 1, appointmentDate: 1 });
+appointmentSchema.index({ availability: 1 });
+
+
+
 module.exports = Appointment;
