@@ -34,6 +34,9 @@ const register = async (req, res) => {
     });
   }
 
+  // Do not hash `password` here -- the raw value is hashed by the User model's pre-save
+  // hook (src/models/User.js), which runs on every save/create. Hashing it again here would
+  // double-hash it, and no user would ever be able to log back in with their own password.
   let user;
   try {
     user = await User.create({ name, email, password, role });
