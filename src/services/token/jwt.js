@@ -1,3 +1,4 @@
+const crypto = require("crypto");
 const jwt = require("jsonwebtoken");
 
 const ALGORITHM = "HS256";
@@ -7,7 +8,7 @@ const signToken = (payload) => {
     throw new Error("JWT_SECRET is not configured");
   }
 
-  return jwt.sign(payload, process.env.JWT_SECRET, {
+  return jwt.sign({ ...payload, jti: crypto.randomUUID() }, process.env.JWT_SECRET, {
     algorithm: ALGORITHM,
     expiresIn: process.env.JWT_EXPIRES_IN || "1h",
   });

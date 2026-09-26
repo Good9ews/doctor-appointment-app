@@ -1,6 +1,6 @@
 const express = require("express");
 const rateLimit = require("express-rate-limit");
-const { register, login, me } = require("../controllers/authController");
+const { register, login, me, logout } = require("../controllers/authController");
 const { registerValidationRules, loginValidationRules } = require("../services/validation/authValidation");
 const { authenticate } = require("../middleware/auth");
 
@@ -35,5 +35,6 @@ const registerRateLimiter = rateLimit({
 router.post("/register", registerRateLimiter, registerValidationRules, register);
 router.post("/login", loginRateLimiter, loginValidationRules, login);
 router.get("/me", authenticate, me);
+router.post("/logout", authenticate, logout);
 
 module.exports = router;
