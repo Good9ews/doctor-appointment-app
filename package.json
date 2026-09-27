@@ -4,7 +4,10 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "set NODE_ENV=test&& jest --runInBand --forceExit",
+    "test:watch": "set NODE_ENV=test&& jest --watch --runInBand"
+
+    
   },
   "keywords": [],
   "author": "",
@@ -14,5 +17,18 @@
     "dotenv": "^18.0.2",
     "express": "^5.2.1",
     "mongoose": "^9.10.1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Good9ews/doctor-appointment-app.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Good9ews/doctor-appointment-app/issues"
+  },
+  "homepage": "https://github.com/Good9ews/doctor-appointment-app#readme",
+  "devDependencies": {
+    "jest": "^30.5.2",
+    "mongodb-memory-server": "^11.3.0",
+    "superfast": "^0.2.5"
   }
 }
