@@ -1,14 +1,15 @@
 const request = require("supertest");
 const mongoose = require("mongoose");
-
-const app = require("../../app"); // adjust path if needed
+const app = require("../../app");
 const { connect, closeDatabase, clearDatabase } = require("../setup");
 
 const User = require("../../models/User");
 const Doctor = require("../../models/Doctor");
 const Availability = require("../../models/Availability");
 const Appointment = require("../../models/Appointment");
-const generateToken = require("../../utils/generateToken"); // adjust if different
+
+// Use your existing JWT service
+const { signToken } = require("../../services/token/jwt");   // adjust if the export name is different
 
 // ---------- helpers ----------
 const createPatient = async (overrides = {}) => {
@@ -19,7 +20,9 @@ const createPatient = async (overrides = {}) => {
     role: "patient",
     ...overrides,
   });
-  const token = generateToken(patient._id);
+
+  // Use your existing signToken
+  const token = signToken(patient._id);   // or signToken({ id: patient._id }) depending on your implementation
   return { patient, token };
 };
 
@@ -35,10 +38,10 @@ const createDoctorUser = async (overrides = {}) => {
   const doctor = await Doctor.create({
     user: user._id,
     specialization: "Cardiology",
-    // add other required fields from your Doctor model
+    // add other required fields if needed
   });
 
-  const token = generateToken(user._id);
+  const token = signToken(user._id);   // same as above
   return { user, doctor, token };
 };
 
@@ -52,6 +55,7 @@ const createAvailability = async (doctorId, overrides = {}) => {
     ...overrides,
   });
 };
+
 
 // ---------- test suite ----------
 describe("Appointment API", () => {
