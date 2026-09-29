@@ -4,6 +4,7 @@ const { MongoMemoryServer } = require("mongodb-memory-server");
 const app = require("../src/app");
 const User = require("../src/models/User");
 const Doctor = require("../src/models/Doctor");
+const { signToken } = require("../src/services/token/jwt");
 
 let mongoServer;
 
@@ -31,6 +32,9 @@ const makeUser = (overrides = {}) =>
     ...overrides,
   });
 
+const tokenFor = (user) => signToken({ sub: user._id.toString(), role: user.role });
+const auth = (token) => ({ Authorization: `Bearer ${token}` });
+
 const validProfile = (userId) => ({
   user: userId.toString(),
   name: "Greg House",
@@ -41,10 +45,13 @@ const validProfile = (userId) => ({
   bio: "Diagnostician.",
 });
 
+const createProfile = (user) =>
+  request(app).post("/api/doctors").set(auth(tokenFor(user))).send(validProfile(user._id));
+
 describe("POST /api/doctors", () => {
   test("creates a doctor profile (happy path)", async () => {
     const user = await makeUser();
-    const res = await request(app).post("/api/doctors").send(validProfile(user._id));
+    const res = await createProfile(user);
 
     expect(res.status).toBe(201);
     expect(res.body.success).toBe(true);
@@ -57,7 +64,7 @@ describe("POST /api/doctors", () => {
     const body = validProfile(user._id);
     delete body.phone;
 
-    const res = await request(app).post("/api/doctors").send(body);
+    const res = await request(app).post("/api/doctors").set(auth(tokenFor(user))).send(body);
 
     expect(res.status).toBe(400);
     expect(res.body.success).toBe(false);
@@ -67,6 +74,7 @@ describe("POST /api/doctors", () => {
     const user = await makeUser();
     const res = await request(app)
       .post("/api/doctors")
+      .set(auth(tokenFor(user)))
       .send({ ...validProfile(user._id), email: "not-an-email" });
 
     expect(res.status).toBe(400);
@@ -74,32 +82,40 @@ describe("POST /api/doctors", () => {
   });
 
   test("rejects a non-ObjectId user with 400", async () => {
+    const user = await makeUser();
     const res = await request(app)
       .post("/api/doctors")
+      .set(auth(tokenFor(user)))
       .send({ ...validProfile(new mongoose.Types.ObjectId()), user: "nope" });
 
     expect(res.status).toBe(400);
   });
 
-  test("returns 404 for an unknown user id", async () => {
+  test("rejects patients with 403", async () => {
+    const patient = await makeUser({ role: "patient" });
     const res = await request(app)
       .post("/api/doctors")
-      .send(validProfile(new mongoose.Types.ObjectId()));
+      .set(auth(tokenFor(patient)))
+      .send(validProfile(patient._id));
 
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(403);
   });
 
-  test("rejects a user without the doctor role with 400", async () => {
-    const patient = await makeUser({ role: "patient" });
-    const res = await request(app).post("/api/doctors").send(validProfile(patient._id));
+  test("rejects creating a profile for another user with 403", async () => {
+    const first = await makeUser();
+    const second = await makeUser();
+    const res = await request(app)
+      .post("/api/doctors")
+      .set(auth(tokenFor(first)))
+      .send(validProfile(second._id));
 
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(403);
   });
 
   test("rejects a duplicate profile for the same user with 409", async () => {
     const user = await makeUser();
-    await request(app).post("/api/doctors").send(validProfile(user._id));
-    const res = await request(app).post("/api/doctors").send(validProfile(user._id));
+    await createProfile(user);
+    const res = await createProfile(user);
 
     expect(res.status).toBe(409);
   });
@@ -122,7 +138,7 @@ describe("GET /api/doctors/:id", () => {
 
   test("returns the profile for a known id", async () => {
     const user = await makeUser();
-    const created = await request(app).post("/api/doctors").send(validProfile(user._id));
+    const created = await createProfile(user);
 
     const res = await request(app).get(`/api/doctors/${created.body.data._id}`);
 
@@ -133,17 +149,22 @@ describe("GET /api/doctors/:id", () => {
 
 describe("PUT /api/doctors/:id", () => {
   test("rejects a malformed id with 400", async () => {
-    const res = await request(app).put("/api/doctors/not-an-id").send({ location: "X" });
+    const user = await makeUser();
+    const res = await request(app)
+      .put("/api/doctors/not-an-id")
+      .set(auth(tokenFor(user)))
+      .send({ location: "X" });
 
     expect(res.status).toBe(400);
   });
 
   test("rejects an invalid email with 400", async () => {
     const user = await makeUser();
-    const created = await request(app).post("/api/doctors").send(validProfile(user._id));
+    const created = await createProfile(user);
 
     const res = await request(app)
       .put(`/api/doctors/${created.body.data._id}`)
+      .set(auth(tokenFor(user)))
       .send({ email: "bad" });
 
     expect(res.status).toBe(400);
@@ -151,39 +172,91 @@ describe("PUT /api/doctors/:id", () => {
 
   test("updates allowed fields (happy path)", async () => {
     const user = await makeUser();
-    const created = await request(app).post("/api/doctors").send(validProfile(user._id));
+    const created = await createProfile(user);
 
     const res = await request(app)
       .put(`/api/doctors/${created.body.data._id}`)
+      .set(auth(tokenFor(user)))
       .send({ location: "New York", bio: "Updated bio." });
 
     expect(res.status).toBe(200);
     expect(res.body.data.location).toBe("New York");
     expect(res.body.data.bio).toBe("Updated bio.");
   });
+
+  test("rejects updating another doctor's profile with 403", async () => {
+    const owner = await makeUser();
+    const other = await makeUser();
+    const created = await createProfile(owner);
+
+    const res = await request(app)
+      .put(`/api/doctors/${created.body.data._id}`)
+      .set(auth(tokenFor(other)))
+      .send({ location: "Elsewhere" });
+
+    expect(res.status).toBe(403);
+  });
 });
 
 describe("DELETE /api/doctors/:id", () => {
   test("rejects a malformed id with 400", async () => {
-    const res = await request(app).delete("/api/doctors/not-an-id");
+    const user = await makeUser();
+    const res = await request(app)
+      .delete("/api/doctors/not-an-id")
+      .set(auth(tokenFor(user)));
 
     expect(res.status).toBe(400);
   });
 
   test("returns 404 for a well-formed but unknown id", async () => {
-    const res = await request(app).delete(`/api/doctors/${new mongoose.Types.ObjectId()}`);
+    const user = await makeUser();
+    const res = await request(app)
+      .delete(`/api/doctors/${new mongoose.Types.ObjectId()}`)
+      .set(auth(tokenFor(user)));
 
     expect(res.status).toBe(404);
   });
 
   test("deletes a known profile", async () => {
     const user = await makeUser();
-    const created = await request(app).post("/api/doctors").send(validProfile(user._id));
+    const created = await createProfile(user);
 
-    const res = await request(app).delete(`/api/doctors/${created.body.data._id}`);
+    const res = await request(app)
+      .delete(`/api/doctors/${created.body.data._id}`)
+      .set(auth(tokenFor(user)));
 
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
+  });
+
+  test("rejects deleting another doctor's profile with 403", async () => {
+    const owner = await makeUser();
+    const other = await makeUser();
+    const created = await createProfile(owner);
+
+    const res = await request(app)
+      .delete(`/api/doctors/${created.body.data._id}`)
+      .set(auth(tokenFor(other)));
+
+    expect(res.status).toBe(403);
+  });
+});
+
+describe("doctor write auth", () => {
+  test("unauthenticated writes get 401", async () => {
+    const user = await makeUser();
+    const created = await createProfile(user);
+    const id = created.body.data._id;
+
+    const [post, put, del] = await Promise.all([
+      request(app).post("/api/doctors").send(validProfile(user._id)),
+      request(app).put(`/api/doctors/${id}`).send({ location: "X" }),
+      request(app).delete(`/api/doctors/${id}`),
+    ]);
+
+    expect(post.status).toBe(401);
+    expect(put.status).toBe(401);
+    expect(del.status).toBe(401);
   });
 });
 

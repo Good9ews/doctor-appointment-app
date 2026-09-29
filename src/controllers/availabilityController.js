@@ -1,5 +1,33 @@
+const { validationResult } = require("express-validator");
 const Availability = require("../models/Availability");
 const Doctor = require("../models/Doctor");
+
+const AVAILABILITY_DB_UNAVAILABLE = "Availability database is unavailable right now.";
+
+const validationErrorResponse = (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    res.status(400).json({
+      success: false,
+      message: errors.array()[0].msg,
+    });
+    return true;
+  }
+  return false;
+};
+
+const timeToMinutes = (time) => {
+  const [h, m] = time.split(":").map(Number);
+  return h * 60 + m;
+};
+
+const dayBounds = (date) => {
+  const start = new Date(date);
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(date);
+  end.setHours(23, 59, 59, 999);
+  return { start, end };
+};
 
 const getAllAvailability = async (req, res) => {
   try {
@@ -17,12 +45,16 @@ const getAllAvailability = async (req, res) => {
 
     return res.status(500).json({
       success: false,
-      message: "Availability database is unavailable right now.",
+      message: AVAILABILITY_DB_UNAVAILABLE,
     });
   }
 };
 
 const getAvailabilityByDoctor = async (req, res) => {
+  if (validationErrorResponse(req, res)) {
+    return undefined;
+  }
+
   try {
     const { doctorId } = req.params;
 
@@ -47,12 +79,16 @@ const getAvailabilityByDoctor = async (req, res) => {
   } catch (error) {
     return res.status(500).json({
       success: false,
-      message: error.message,
+      message: AVAILABILITY_DB_UNAVAILABLE,
     });
   }
 };
 
 const createAvailability = async (req, res) => {
+  if (validationErrorResponse(req, res)) {
+    return undefined;
+  }
+
   try {
     const { doctor, date, startTime, endTime } = req.body;
 
@@ -63,26 +99,55 @@ const createAvailability = async (req, res) => {
       });
     }
 
-    const doctorExists = await Doctor.findById(doctor);
-    if (!doctorExists) {
+    const doctorProfile = await Doctor.findById(doctor);
+    if (!doctorProfile) {
       return res.status(404).json({
         success: false,
         message: "Doctor not found",
       });
     }
 
-    const existingSlot = await Availability.findOne({
+    // Doctors manage only their own slots -- there is no admin role, so
+    // creating availability for another doctor's profile is forbidden.
+    if (doctorProfile.user.toString() !== req.user._id.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: "Not authorized to manage availability for this doctor",
+      });
+    }
+
+    if (timeToMinutes(startTime) >= timeToMinutes(endTime)) {
+      return res.status(400).json({
+        success: false,
+        message: "End time must be after start time",
+      });
+    }
+
+    const { start: dayStart, end: dayEnd } = dayBounds(date);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (dayStart < today) {
+      return res.status(400).json({
+        success: false,
+        message: "Cannot create availability in the past",
+      });
+    }
+
+    const sameDaySlots = await Availability.find({
       doctor,
-      date,
-      startTime,
-      endTime,
-      isBooked: false,
+      date: { $gte: dayStart, $lte: dayEnd },
     });
 
-    if (existingSlot) {
+    const overlaps = sameDaySlots.some(
+      (slot) =>
+        timeToMinutes(startTime) < timeToMinutes(slot.endTime) &&
+        timeToMinutes(slot.startTime) < timeToMinutes(endTime),
+    );
+
+    if (overlaps) {
       return res.status(409).json({
         success: false,
-        message: "This availability slot already exists",
+        message: "This slot overlaps an existing availability slot",
       });
     }
 
@@ -109,7 +174,7 @@ const createAvailability = async (req, res) => {
 
     return res.status(500).json({
       success: false,
-      message: error.message,
+      message: AVAILABILITY_DB_UNAVAILABLE,
     });
   }
 };
