@@ -8,6 +8,7 @@ const connectDB = require("./config/database");
 const authRoutes = require("./routes/authRoutes");
 const doctorRoutes = require("./routes/doctorRoutes");
 const availabilityRoutes = require("./routes/availabilityRoutes");
+const appointmentRoutes = require("./routes/appointmentRoutes");
 const errorHandler = require("./middleware/errorHandler");
 
 dotenv.config();
@@ -35,6 +36,7 @@ app.get("/", (req, res) => {
 app.use("/api/auth", authRoutes);
 app.use("/api/doctors", doctorRoutes);
 app.use("/api/availability", availabilityRoutes);
+app.use("/api/appointments", appointmentRoutes);
 
 app.use((req, res) => {
   res.status(404).json({
