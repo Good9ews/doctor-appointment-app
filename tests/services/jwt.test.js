@@ -9,6 +9,15 @@ describe("jwt service", () => {
     expect(decoded.role).toBe("patient");
   });
 
+  test("gives every signed token a unique jti", () => {
+    const decodedA = verifyToken(signToken({ sub: "user-123" }));
+    const decodedB = verifyToken(signToken({ sub: "user-123" }));
+
+    expect(decodedA.jti).toEqual(expect.any(String));
+    expect(decodedA.jti.length).toBeGreaterThan(0);
+    expect(decodedA.jti).not.toBe(decodedB.jti);
+  });
+
   test("throws when verifying a garbage token", () => {
     expect(() => verifyToken("not-a-real-token")).toThrow();
   });

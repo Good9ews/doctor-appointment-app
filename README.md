@@ -16,8 +16,9 @@ npm test
 | POST | `/api/auth/register` | none | Create a `patient` or `doctor` account. Body: `name`, `email`, `password` (min 8 chars), `role`. |
 | POST | `/api/auth/login` | none | Exchange email/password for a JWT. Rate-limited to 10 attempts / 15 min per IP. |
 | GET | `/api/auth/me` | Bearer token | Returns the authenticated user. |
+| POST | `/api/auth/logout` | Bearer token | Revokes the token used to call it — it stops working immediately, even before its natural expiry. Other tokens/sessions for the same user are unaffected. |
 
-All responses are `{ success, ... }` JSON. Errors: `400` invalid input, `401` bad credentials or missing/invalid token, `409` duplicate email.
+All responses are `{ success, ... }` JSON. Errors: `400` invalid input, `401` bad credentials or missing/invalid/revoked token, `409` duplicate email.
 
 Send the token from register/login on subsequent requests as:
 

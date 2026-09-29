@@ -3,6 +3,7 @@ const request = require("supertest");
 const { MongoMemoryServer } = require("mongodb-memory-server");
 const app = require("../src/app");
 const User = require("../src/models/User");
+const RevokedToken = require("../src/models/RevokedToken");
 
 let mongoServer;
 
@@ -13,6 +14,7 @@ beforeAll(async () => {
 
 afterEach(async () => {
   await User.deleteMany({});
+  await RevokedToken.deleteMany({});
 });
 
 afterAll(async () => {
@@ -27,9 +29,23 @@ const validPatient = {
   role: "patient",
 };
 
+// The register/login rate limiters key on req.ip (the app trusts one proxy hop, see
+// app.js). Giving each call here its own fake client IP means this file's growing test
+// count can never accidentally trip the real, deliberately-set production rate limit --
+// that limit gets its own dedicated coverage in tests/rateLimiter.test.js.
+let nextIp = 0;
+const freshClientIp = () => {
+  nextIp += 1;
+  return `10.0.${(nextIp >> 8) & 255}.${nextIp & 255}`;
+};
+const registerRequest = (body) =>
+  request(app).post("/api/auth/register").set("X-Forwarded-For", freshClientIp()).send(body);
+const loginRequest = (body) =>
+  request(app).post("/api/auth/login").set("X-Forwarded-For", freshClientIp()).send(body);
+
 describe("POST /api/auth/register", () => {
   test("registers a new user and returns a token (happy path)", async () => {
-    const res = await request(app).post("/api/auth/register").send(validPatient);
+    const res = await registerRequest(validPatient);
 
     expect(res.status).toBe(201);
     expect(res.body.success).toBe(true);
@@ -39,46 +55,40 @@ describe("POST /api/auth/register", () => {
   });
 
   test("rejects duplicate email registration with 409", async () => {
-    await request(app).post("/api/auth/register").send(validPatient);
-    const res = await request(app).post("/api/auth/register").send(validPatient);
+    await registerRequest(validPatient);
+    const res = await registerRequest(validPatient);
 
     expect(res.status).toBe(409);
     expect(res.body.success).toBe(false);
   });
 
   test("rejects a password shorter than 8 characters with 400", async () => {
-    const res = await request(app)
-      .post("/api/auth/register")
-      .send({ ...validPatient, password: "short" });
+    const res = await registerRequest({ ...validPatient, password: "short" });
 
     expect(res.status).toBe(400);
     expect(res.body.success).toBe(false);
   });
 
   test("rejects a password longer than 72 bytes with 400", async () => {
-    const res = await request(app)
-      .post("/api/auth/register")
-      .send({ ...validPatient, password: "a".repeat(73) });
+    const res = await registerRequest({ ...validPatient, password: "a".repeat(73) });
 
     expect(res.status).toBe(400);
   });
 
   test("rejects an invalid role with 400", async () => {
-    const res = await request(app)
-      .post("/api/auth/register")
-      .send({ ...validPatient, role: "admin" });
+    const res = await registerRequest({ ...validPatient, role: "admin" });
 
     expect(res.status).toBe(400);
   });
 
   test("rejects an empty request body with 400", async () => {
-    const res = await request(app).post("/api/auth/register").send({});
+    const res = await registerRequest({});
 
     expect(res.status).toBe(400);
   });
 
   test("stores the password as a bcrypt hash, never in plaintext", async () => {
-    await request(app).post("/api/auth/register").send(validPatient);
+    await registerRequest(validPatient);
 
     const stored = await User.findOne({ email: validPatient.email }).select("+password");
     expect(stored.password).not.toBe(validPatient.password);
@@ -86,10 +96,7 @@ describe("POST /api/auth/register", () => {
   });
 
   test("a race between two identical registrations yields one 201 and one 409, never a 500", async () => {
-    const [first, second] = await Promise.all([
-      request(app).post("/api/auth/register").send(validPatient),
-      request(app).post("/api/auth/register").send(validPatient),
-    ]);
+    const [first, second] = await Promise.all([registerRequest(validPatient), registerRequest(validPatient)]);
 
     const statuses = [first.status, second.status].sort();
     expect(statuses).toEqual([201, 409]);
@@ -101,13 +108,11 @@ describe("POST /api/auth/register", () => {
 
 describe("POST /api/auth/login", () => {
   beforeEach(async () => {
-    await request(app).post("/api/auth/register").send(validPatient);
+    await registerRequest(validPatient);
   });
 
   test("logs in with correct credentials (happy path)", async () => {
-    const res = await request(app)
-      .post("/api/auth/login")
-      .send({ email: validPatient.email, password: validPatient.password });
+    const res = await loginRequest({ email: validPatient.email, password: validPatient.password });
 
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
@@ -115,38 +120,28 @@ describe("POST /api/auth/login", () => {
   });
 
   test("rejects a wrong password with 401", async () => {
-    const res = await request(app)
-      .post("/api/auth/login")
-      .send({ email: validPatient.email, password: "wrong-password" });
+    const res = await loginRequest({ email: validPatient.email, password: "wrong-password" });
 
     expect(res.status).toBe(401);
   });
 
   test("rejects a non-existent email with 401 (no user enumeration)", async () => {
-    const res = await request(app)
-      .post("/api/auth/login")
-      .send({ email: "nobody@example.com", password: "whatever123" });
+    const res = await loginRequest({ email: "nobody@example.com", password: "whatever123" });
 
     expect(res.status).toBe(401);
     expect(res.body.message).not.toMatch(/exist|found/i);
   });
 
   test("rejects an array-typed email with 400 instead of coercing it", async () => {
-    const res = await request(app)
-      .post("/api/auth/login")
-      .send({ email: [validPatient.email], password: validPatient.password });
+    const res = await loginRequest({ email: [validPatient.email], password: validPatient.password });
 
     expect(res.status).toBe(400);
   });
 
   test("accepts a lowercase 'bearer' scheme on subsequent /me calls", async () => {
-    const loginRes = await request(app)
-      .post("/api/auth/login")
-      .send({ email: validPatient.email, password: validPatient.password });
+    const loginRes = await loginRequest({ email: validPatient.email, password: validPatient.password });
 
-    const res = await request(app)
-      .get("/api/auth/me")
-      .set("Authorization", `bearer ${loginRes.body.token}`);
+    const res = await request(app).get("/api/auth/me").set("Authorization", `bearer ${loginRes.body.token}`);
 
     expect(res.status).toBe(200);
   });
@@ -166,7 +161,7 @@ describe("GET /api/auth/me", () => {
   });
 
   test("returns the authenticated user for a valid token (happy path)", async () => {
-    const registerRes = await request(app).post("/api/auth/register").send(validPatient);
+    const registerRes = await registerRequest(validPatient);
     const token = registerRes.body.token;
 
     const res = await request(app).get("/api/auth/me").set("Authorization", `Bearer ${token}`);
@@ -177,7 +172,7 @@ describe("GET /api/auth/me", () => {
 
   test("rejects an expired token with 401", async () => {
     const jwt = require("jsonwebtoken");
-    const registerRes = await request(app).post("/api/auth/register").send(validPatient);
+    const registerRes = await registerRequest(validPatient);
     const decoded = jwt.decode(registerRes.body.token);
     const expiredToken = jwt.sign({ sub: decoded.sub, role: decoded.role }, process.env.JWT_SECRET, {
       algorithm: "HS256",
@@ -190,7 +185,7 @@ describe("GET /api/auth/me", () => {
   });
 
   test("rejects a token for a user that was since deleted with 401", async () => {
-    const registerRes = await request(app).post("/api/auth/register").send(validPatient);
+    const registerRes = await registerRequest(validPatient);
     const token = registerRes.body.token;
 
     await User.deleteMany({});
@@ -198,6 +193,72 @@ describe("GET /api/auth/me", () => {
     const res = await request(app).get("/api/auth/me").set("Authorization", `Bearer ${token}`);
 
     expect(res.status).toBe(401);
+  });
+});
+
+describe("POST /api/auth/logout", () => {
+  test("rejects a request with no token with 401", async () => {
+    const res = await request(app).post("/api/auth/logout");
+    expect(res.status).toBe(401);
+  });
+
+  test("logs out and immediately invalidates the token used (happy path)", async () => {
+    const registerRes = await registerRequest(validPatient);
+    const token = registerRes.body.token;
+
+    const logoutRes = await request(app).post("/api/auth/logout").set("Authorization", `Bearer ${token}`);
+
+    expect(logoutRes.status).toBe(200);
+    expect(logoutRes.body.success).toBe(true);
+
+    const meRes = await request(app).get("/api/auth/me").set("Authorization", `Bearer ${token}`);
+    expect(meRes.status).toBe(401);
+  });
+
+  test("stores the revoked token's real expiry, not some other timestamp", async () => {
+    const jwt = require("jsonwebtoken");
+    const registerRes = await registerRequest(validPatient);
+    const token = registerRes.body.token;
+    const decoded = jwt.decode(token);
+
+    await request(app).post("/api/auth/logout").set("Authorization", `Bearer ${token}`);
+
+    const stored = await RevokedToken.findOne({ jti: decoded.jti });
+    expect(stored).not.toBeNull();
+    // exp is seconds since epoch; expiresAt must be that same instant, not e.g. seconds
+    // misread as milliseconds (which would date it to 1970 and have it TTL-delete almost
+    // immediately, silently un-revoking the token for the rest of its real lifetime).
+    expect(stored.expiresAt.getTime()).toBe(decoded.exp * 1000);
+  });
+
+  test("logging out one token does not affect a different token for the same user", async () => {
+    await registerRequest(validPatient);
+
+    const loginA = await loginRequest({ email: validPatient.email, password: validPatient.password });
+    const loginB = await loginRequest({ email: validPatient.email, password: validPatient.password });
+
+    await request(app).post("/api/auth/logout").set("Authorization", `Bearer ${loginA.body.token}`);
+
+    const meWithA = await request(app)
+      .get("/api/auth/me")
+      .set("Authorization", `Bearer ${loginA.body.token}`);
+    const meWithB = await request(app)
+      .get("/api/auth/me")
+      .set("Authorization", `Bearer ${loginB.body.token}`);
+
+    expect(meWithA.status).toBe(401);
+    expect(meWithB.status).toBe(200);
+  });
+
+  test("calling logout twice with the same token rejects the second call with 401", async () => {
+    const registerRes = await registerRequest(validPatient);
+    const token = registerRes.body.token;
+
+    const first = await request(app).post("/api/auth/logout").set("Authorization", `Bearer ${token}`);
+    const second = await request(app).post("/api/auth/logout").set("Authorization", `Bearer ${token}`);
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(401);
   });
 });
 
@@ -213,6 +274,7 @@ describe("error response shape", () => {
   test("returns JSON for malformed request bodies instead of an HTML stack trace", async () => {
     const res = await request(app)
       .post("/api/auth/register")
+      .set("X-Forwarded-For", freshClientIp())
       .set("Content-Type", "application/json")
       .send("{ not valid json");
 
@@ -222,9 +284,7 @@ describe("error response shape", () => {
   });
 
   test("returns JSON for an oversized request body instead of an HTML stack trace", async () => {
-    const res = await request(app)
-      .post("/api/auth/register")
-      .send({ ...validPatient, name: "x".repeat(200 * 1024) });
+    const res = await registerRequest({ ...validPatient, name: "x".repeat(200 * 1024) });
 
     expect(res.status).toBe(413);
     expect(res.type).toBe("application/json");
