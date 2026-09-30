@@ -9,6 +9,22 @@ npm start               # or: node index.js
 npm test
 ```
 
+## Interactive API docs
+
+Start the server (`npm start`), then open:
+
+```
+http://localhost:5000/api-docs
+```
+
+That page lists every endpoint with request/response shapes and a try-it-out console. The raw OpenAPI JSON lives at `/api-docs.json`.
+
+To call anything behind auth from the docs UI:
+
+1. `POST /api/auth/register` (or `/login`) with a `patient` or `doctor` account — copy the `token` from the response.
+2. Click **Authorize**, paste `Bearer <token>`, confirm.
+3. Patient flow to try end to end: create a doctor account → `POST /api/doctors` (as that doctor) → `POST /api/availability` (as that doctor) → register a patient → `POST /api/appointments` (as the patient).
+
 ## Authentication
 
 | Method | Endpoint | Auth | Description |
