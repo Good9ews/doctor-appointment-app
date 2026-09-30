@@ -101,6 +101,15 @@ const createDoctor = async (req, res) => {
       });
     }
 
+    // No admin role exists, so profiles are self-service: callers can only
+    // create a profile linked to their own account.
+    if (user !== req.user._id.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: "You can only create a doctor profile for your own account",
+      });
+    }
+
     const existingUser = await User.findById(user);
     if (!existingUser) {
       return res.status(404).json({
@@ -172,6 +181,13 @@ const updateDoctor = async (req, res) => {
       });
     }
 
+    if (doctor.user.toString() !== req.user._id.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: "You can only update your own doctor profile",
+      });
+    }
+
     const allowedFields = [
       "name",
       "specialization",
@@ -220,7 +236,7 @@ const deleteDoctor = async (req, res) => {
   }
 
   try {
-    const doctor = await Doctor.findByIdAndDelete(req.params.id);
+    const doctor = await Doctor.findById(req.params.id);
 
     if (!doctor) {
       return res.status(404).json({
@@ -228,6 +244,15 @@ const deleteDoctor = async (req, res) => {
         message: "Doctor not found",
       });
     }
+
+    if (doctor.user.toString() !== req.user._id.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: "You can only delete your own doctor profile",
+      });
+    }
+
+    await doctor.deleteOne();
 
     return res.status(200).json({
       success: true,
