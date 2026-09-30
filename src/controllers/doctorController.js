@@ -1,5 +1,20 @@
+const { validationResult } = require("express-validator");
 const Doctor = require("../models/Doctor");
 const User = require("../models/User");
+
+const validationErrorResponse = (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    res.status(400).json({
+      success: false,
+      message: errors.array()[0].msg,
+    });
+    return true;
+  }
+  return false;
+};
+
+const DOCTOR_DB_UNAVAILABLE = "Doctor database is unavailable right now.";
 
 const getAllDoctors = async (req, res) => {
   try {
@@ -41,6 +56,10 @@ const getAllDoctors = async (req, res) => {
 };
 
 const getDoctorById = async (req, res) => {
+  if (validationErrorResponse(req, res)) {
+    return undefined;
+  }
+
   try {
     const doctor = await Doctor.findById(req.params.id).populate(
       "user",
@@ -67,6 +86,10 @@ const getDoctorById = async (req, res) => {
 };
 
 const createDoctor = async (req, res) => {
+  if (validationErrorResponse(req, res)) {
+    return undefined;
+  }
+
   try {
     const { user, name, specialization, email, phone, location, bio } =
       req.body;
@@ -129,12 +152,16 @@ const createDoctor = async (req, res) => {
 
     return res.status(500).json({
       success: false,
-      message: error.message,
+      message: DOCTOR_DB_UNAVAILABLE,
     });
   }
 };
 
 const updateDoctor = async (req, res) => {
+  if (validationErrorResponse(req, res)) {
+    return undefined;
+  }
+
   try {
     const doctor = await Doctor.findById(req.params.id);
 
@@ -182,12 +209,16 @@ const updateDoctor = async (req, res) => {
 
     return res.status(500).json({
       success: false,
-      message: error.message,
+      message: DOCTOR_DB_UNAVAILABLE,
     });
   }
 };
 
 const deleteDoctor = async (req, res) => {
+  if (validationErrorResponse(req, res)) {
+    return undefined;
+  }
+
   try {
     const doctor = await Doctor.findByIdAndDelete(req.params.id);
 
@@ -205,7 +236,7 @@ const deleteDoctor = async (req, res) => {
   } catch (error) {
     return res.status(500).json({
       success: false,
-      message: error.message,
+      message: DOCTOR_DB_UNAVAILABLE,
     });
   }
 };
