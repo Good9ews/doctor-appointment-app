@@ -29,6 +29,41 @@ const dayBounds = (date) => {
   return { start, end };
 };
 
+const overlapsWindow = (startTime, endTime, slot) =>
+  timeToMinutes(startTime) < timeToMinutes(slot.endTime) &&
+  timeToMinutes(slot.startTime) < timeToMinutes(endTime);
+
+const findOverlappingSlot = (doctorId, date, startTime, endTime, excludeId = null) =>
+  Availability.find({
+    doctor: doctorId,
+    date: { $gte: dayBounds(date).start, $lte: dayBounds(date).end },
+    ...(excludeId ? { _id: { $ne: excludeId } } : {}),
+  }).then((slots) => slots.find((slot) => overlapsWindow(startTime, endTime, slot)));
+
+// Slots are doctor self-service: the slot's doctor profile must belong to the
+// caller. Returns the slot, or sends the 404/403 response and returns null.
+const findOwnedSlot = async (req, res) => {
+  const slot = await Availability.findById(req.params.id);
+  if (!slot) {
+    res.status(404).json({
+      success: false,
+      message: "Availability slot not found",
+    });
+    return null;
+  }
+
+  const doctorProfile = await Doctor.findById(slot.doctor);
+  if (!doctorProfile || doctorProfile.user.toString() !== req.user._id.toString()) {
+    res.status(403).json({
+      success: false,
+      message: "Not authorized to manage availability for this doctor",
+    });
+    return null;
+  }
+
+  return slot;
+};
+
 const getAllAvailability = async (req, res) => {
   try {
     const availability = await Availability.find().sort({
@@ -123,7 +158,7 @@ const createAvailability = async (req, res) => {
       });
     }
 
-    const { start: dayStart, end: dayEnd } = dayBounds(date);
+    const { start: dayStart } = dayBounds(date);
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     if (dayStart < today) {
@@ -133,18 +168,9 @@ const createAvailability = async (req, res) => {
       });
     }
 
-    const sameDaySlots = await Availability.find({
-      doctor,
-      date: { $gte: dayStart, $lte: dayEnd },
-    });
+    const clash = await findOverlappingSlot(doctor, date, startTime, endTime);
 
-    const overlaps = sameDaySlots.some(
-      (slot) =>
-        timeToMinutes(startTime) < timeToMinutes(slot.endTime) &&
-        timeToMinutes(slot.startTime) < timeToMinutes(endTime),
-    );
-
-    if (overlaps) {
+    if (clash) {
       return res.status(409).json({
         success: false,
         message: "This slot overlaps an existing availability slot",
@@ -179,8 +205,119 @@ const createAvailability = async (req, res) => {
   }
 };
 
+const updateAvailability = async (req, res) => {
+  if (validationErrorResponse(req, res)) {
+    return undefined;
+  }
+
+  try {
+    const slot = await findOwnedSlot(req, res);
+    if (!slot) {
+      return undefined;
+    }
+
+    // A booked slot's time is committed to a patient appointment -- it can
+    // only change via cancel/rebook, never by editing the slot underneath it.
+    if (slot.isBooked) {
+      return res.status(409).json({
+        success: false,
+        message: "Cannot modify a booked slot",
+      });
+    }
+
+    // The owning doctor is the ownership anchor and is immutable.
+    const date = req.body.date !== undefined ? req.body.date : slot.date;
+    const startTime = req.body.startTime !== undefined ? req.body.startTime : slot.startTime;
+    const endTime = req.body.endTime !== undefined ? req.body.endTime : slot.endTime;
+
+    if (timeToMinutes(startTime) >= timeToMinutes(endTime)) {
+      return res.status(400).json({
+        success: false,
+        message: "End time must be after start time",
+      });
+    }
+
+    const { start: dayStart } = dayBounds(date);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (dayStart < today) {
+      return res.status(400).json({
+        success: false,
+        message: "Cannot create availability in the past",
+      });
+    }
+
+    const clash = await findOverlappingSlot(slot.doctor, date, startTime, endTime, slot._id);
+    if (clash) {
+      return res.status(409).json({
+        success: false,
+        message: "This slot overlaps an existing availability slot",
+      });
+    }
+
+    slot.date = date;
+    slot.startTime = startTime;
+    slot.endTime = endTime;
+    await slot.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Availability updated successfully",
+      data: slot,
+    });
+  } catch (error) {
+    if (error.name === "ValidationError") {
+      return res.status(400).json({
+        success: false,
+        message: error.message,
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: AVAILABILITY_DB_UNAVAILABLE,
+    });
+  }
+};
+
+const deleteAvailability = async (req, res) => {
+  if (validationErrorResponse(req, res)) {
+    return undefined;
+  }
+
+  try {
+    const slot = await findOwnedSlot(req, res);
+    if (!slot) {
+      return undefined;
+    }
+
+    // Deleting a booked slot would orphan the appointment made against it --
+    // cancel the appointment first, which frees the slot.
+    if (slot.isBooked) {
+      return res.status(409).json({
+        success: false,
+        message: "Cannot delete a booked slot",
+      });
+    }
+
+    await slot.deleteOne();
+
+    return res.status(200).json({
+      success: true,
+      message: "Availability deleted successfully",
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: AVAILABILITY_DB_UNAVAILABLE,
+    });
+  }
+};
+
 module.exports = {
   getAllAvailability,
   getAvailabilityByDoctor,
   createAvailability,
+  updateAvailability,
+  deleteAvailability,
 };
