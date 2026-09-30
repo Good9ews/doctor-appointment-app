@@ -238,3 +238,201 @@ describe("GET /api/availability/doctor/:doctorId", () => {
     expect(res.body.data.length).toBe(1);
   });
 });
+
+describe("PUT /api/availability/:id", () => {
+  const createSlot = async () => {
+    const ctx = await setup();
+    const created = await request(app)
+      .post("/api/availability")
+      .set(auth(ctx.doctorToken))
+      .send(validSlot(ctx.profile._id, { startTime: "09:00", endTime: "10:00" }));
+    return { ...ctx, slotId: created.body.data._id };
+  };
+
+  test("rejects unauthenticated requests with 401", async () => {
+    const { slotId } = await createSlot();
+    const res = await request(app).put(`/api/availability/${slotId}`).send({ startTime: "09:30" });
+
+    expect(res.status).toBe(401);
+  });
+
+  test("rejects malformed ids with 400", async () => {
+    const { doctorToken } = await setup();
+    const res = await request(app)
+      .put("/api/availability/nope")
+      .set(auth(doctorToken))
+      .send({ startTime: "09:30" });
+
+    expect(res.status).toBe(400);
+    expect(res.body.message).toBe("invalid availability id");
+  });
+
+  test("returns 404 for unknown ids", async () => {
+    const { doctorToken } = await setup();
+    const res = await request(app)
+      .put(`/api/availability/${new mongoose.Types.ObjectId()}`)
+      .set(auth(doctorToken))
+      .send({ startTime: "09:30" });
+
+    expect(res.status).toBe(404);
+  });
+
+  test("rejects editing another doctor's slot with 403", async () => {
+    const { slotId } = await createSlot();
+    const otherUser = await makeUser("doctor");
+    const res = await request(app)
+      .put(`/api/availability/${slotId}`)
+      .set(auth(tokenFor(otherUser)))
+      .send({ startTime: "09:30" });
+
+    expect(res.status).toBe(403);
+  });
+
+  test("updates times (happy path) and ignores self in overlap check", async () => {
+    const { doctorToken, slotId } = await createSlot();
+
+    // Same values must not clash with itself.
+    const noop = await request(app)
+      .put(`/api/availability/${slotId}`)
+      .set(auth(doctorToken))
+      .send({ startTime: "09:00", endTime: "10:00" });
+    expect(noop.status).toBe(200);
+
+    const res = await request(app)
+      .put(`/api/availability/${slotId}`)
+      .set(auth(doctorToken))
+      .send({ startTime: "09:30", endTime: "10:30" });
+    expect(res.status).toBe(200);
+    expect(res.body.data.startTime).toBe("09:30");
+  });
+
+  test("rejects a move that overlaps another slot with 409", async () => {
+    const { doctorToken, profile, slotId } = await createSlot();
+    await request(app)
+      .post("/api/availability")
+      .set(auth(doctorToken))
+      .send(validSlot(profile._id, { startTime: "11:00", endTime: "12:00" }));
+
+    const res = await request(app)
+      .put(`/api/availability/${slotId}`)
+      .set(auth(doctorToken))
+      .send({ startTime: "10:30", endTime: "11:30" });
+
+    expect(res.status).toBe(409);
+  });
+
+  test("rejects bad times and past dates with 400", async () => {
+    const { doctorToken, slotId } = await createSlot();
+
+    const badOrder = await request(app)
+      .put(`/api/availability/${slotId}`)
+      .set(auth(doctorToken))
+      .send({ startTime: "10:00", endTime: "09:00" });
+    expect(badOrder.status).toBe(400);
+
+    const badFormat = await request(app)
+      .put(`/api/availability/${slotId}`)
+      .set(auth(doctorToken))
+      .send({ startTime: "morning" });
+    expect(badFormat.status).toBe(400);
+
+    const past = new Date();
+    past.setDate(past.getDate() - 1);
+    const pastDate = await request(app)
+      .put(`/api/availability/${slotId}`)
+      .set(auth(doctorToken))
+      .send({ date: past.toISOString() });
+    expect(pastDate.status).toBe(400);
+  });
+
+  test("rejects editing a booked slot with 409", async () => {
+    const { doctorToken, slotId } = await createSlot();
+    await Availability.findByIdAndUpdate(slotId, { $set: { isBooked: true } });
+
+    const res = await request(app)
+      .put(`/api/availability/${slotId}`)
+      .set(auth(doctorToken))
+      .send({ startTime: "09:30" });
+
+    expect(res.status).toBe(409);
+  });
+});
+
+describe("DELETE /api/availability/:id", () => {
+  test("rejects unauthenticated requests with 401", async () => {
+    const { profile } = await setup();
+    const slot = await Availability.create({
+      doctor: profile._id,
+      date: futureDate(),
+      startTime: "09:00",
+      endTime: "10:00",
+    });
+
+    const res = await request(app).delete(`/api/availability/${slot._id}`);
+    expect(res.status).toBe(401);
+  });
+
+  test("rejects malformed ids with 400 and unknown ids with 404", async () => {
+    const { doctorToken } = await setup();
+
+    const malformed = await request(app)
+      .delete("/api/availability/nope")
+      .set(auth(doctorToken));
+    expect(malformed.status).toBe(400);
+
+    const unknown = await request(app)
+      .delete(`/api/availability/${new mongoose.Types.ObjectId()}`)
+      .set(auth(doctorToken));
+    expect(unknown.status).toBe(404);
+  });
+
+  test("rejects deleting another doctor's slot with 403", async () => {
+    const { profile } = await setup();
+    const slot = await Availability.create({
+      doctor: profile._id,
+      date: futureDate(),
+      startTime: "09:00",
+      endTime: "10:00",
+    });
+    const otherUser = await makeUser("doctor");
+
+    const res = await request(app)
+      .delete(`/api/availability/${slot._id}`)
+      .set(auth(tokenFor(otherUser)));
+    expect(res.status).toBe(403);
+  });
+
+  test("rejects deleting a booked slot with 409", async () => {
+    const { doctorToken, profile } = await setup();
+    const slot = await Availability.create({
+      doctor: profile._id,
+      date: futureDate(),
+      startTime: "09:00",
+      endTime: "10:00",
+      isBooked: true,
+    });
+
+    const res = await request(app)
+      .delete(`/api/availability/${slot._id}`)
+      .set(auth(doctorToken));
+    expect(res.status).toBe(409);
+    expect(await Availability.findById(slot._id)).not.toBeNull();
+  });
+
+  test("deletes an unbooked slot (happy path)", async () => {
+    const { doctorToken, profile } = await setup();
+    const slot = await Availability.create({
+      doctor: profile._id,
+      date: futureDate(),
+      startTime: "09:00",
+      endTime: "10:00",
+    });
+
+    const res = await request(app)
+      .delete(`/api/availability/${slot._id}`)
+      .set(auth(doctorToken));
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(await Availability.findById(slot._id)).toBeNull();
+  });
+});
