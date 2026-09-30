@@ -65,6 +65,8 @@ Reads are public (patients browse slots to book); writes are doctor self-service
 | GET | `/api/availability` | none | All slots. |
 | GET | `/api/availability/doctor/:doctorId` | none | Slots for one doctor. |
 | POST | `/api/availability` | doctor (own profile only) | Create a slot. Body: `doctor`, `date`, `startTime`, `endTime`. Overlapping same-day slots → `409`. |
+| POST | `/api/availability/recurring` | doctor (own profile only) | Generate slots from a weekly pattern. Body: `doctor`, `startDate`, `endDate` (max 92-day range), `daysOfWeek` (`0` = Sunday .. `6` = Saturday), `startTime`, `endTime`. Conflicting dates are skipped and reported. Returns `seriesId`. |
+| DELETE | `/api/availability/series/:seriesId` | doctor (own series only) | Delete a series' future unbooked slots. Booked slots are kept (`retainedBooked`); past slots stay as history. |
 | PUT | `/api/availability/:id` | doctor (own slot only) | Edit `date`/`startTime`/`endTime` (owning doctor immutable). Booked slots → `409`. |
 | DELETE | `/api/availability/:id` | doctor (own slot only) | Delete an unbooked slot. Booked slots → `409` (cancel the appointment first). |
 
