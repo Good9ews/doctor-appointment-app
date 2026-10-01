@@ -1,5 +1,20 @@
+const { validationResult } = require("express-validator");
 const Doctor = require("../models/Doctor");
 const User = require("../models/User");
+
+const validationErrorResponse = (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    res.status(400).json({
+      success: false,
+      message: errors.array()[0].msg,
+    });
+    return true;
+  }
+  return false;
+};
+
+const DOCTOR_DB_UNAVAILABLE = "Doctor database is unavailable right now.";
 
 const getAllDoctors = async (req, res) => {
   try {
@@ -41,6 +56,10 @@ const getAllDoctors = async (req, res) => {
 };
 
 const getDoctorById = async (req, res) => {
+  if (validationErrorResponse(req, res)) {
+    return undefined;
+  }
+
   try {
     const doctor = await Doctor.findById(req.params.id).populate(
       "user",
@@ -67,6 +86,10 @@ const getDoctorById = async (req, res) => {
 };
 
 const createDoctor = async (req, res) => {
+  if (validationErrorResponse(req, res)) {
+    return undefined;
+  }
+
   try {
     const { user, name, specialization, email, phone, location, bio } =
       req.body;
@@ -75,6 +98,15 @@ const createDoctor = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "Please provide all required doctor fields",
+      });
+    }
+
+    // No admin role exists, so profiles are self-service: callers can only
+    // create a profile linked to their own account.
+    if (user !== req.user._id.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: "You can only create a doctor profile for your own account",
       });
     }
 
@@ -135,6 +167,10 @@ const createDoctor = async (req, res) => {
 };
 
 const updateDoctor = async (req, res) => {
+  if (validationErrorResponse(req, res)) {
+    return undefined;
+  }
+
   try {
     const doctor = await Doctor.findById(req.params.id);
 
@@ -142,6 +178,13 @@ const updateDoctor = async (req, res) => {
       return res.status(404).json({
         success: false,
         message: "Doctor not found",
+      });
+    }
+
+    if (doctor.user.toString() !== req.user._id.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: "You can only update your own doctor profile",
       });
     }
 
@@ -188,8 +231,12 @@ const updateDoctor = async (req, res) => {
 };
 
 const deleteDoctor = async (req, res) => {
+  if (validationErrorResponse(req, res)) {
+    return undefined;
+  }
+
   try {
-    const doctor = await Doctor.findByIdAndDelete(req.params.id);
+    const doctor = await Doctor.findById(req.params.id);
 
     if (!doctor) {
       return res.status(404).json({
@@ -197,6 +244,15 @@ const deleteDoctor = async (req, res) => {
         message: "Doctor not found",
       });
     }
+
+    if (doctor.user.toString() !== req.user._id.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: "You can only delete your own doctor profile",
+      });
+    }
+
+    await doctor.deleteOne();
 
     return res.status(200).json({
       success: true,

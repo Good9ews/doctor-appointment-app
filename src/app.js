@@ -8,7 +8,10 @@ const connectDB = require("./config/database");
 const authRoutes = require("./routes/authRoutes");
 const doctorRoutes = require("./routes/doctorRoutes");
 const availabilityRoutes = require("./routes/availabilityRoutes");
+const appointmentRoutes = require("./routes/appointmentRoutes");
 const errorHandler = require("./middleware/errorHandler");
+const { apiReference } = require("@scalar/express-api-reference");
+const { openApiSpec } = require("./docs/openapi");
 
 dotenv.config();
 
@@ -23,8 +26,6 @@ app.set("trust proxy", 1);
 
 app.use(express.json());
 
-app.use("/api/doctors", doctorRoutes);
-
 app.get("/", (req, res) => {
   res.json({
     success: true,
@@ -35,6 +36,14 @@ app.get("/", (req, res) => {
 app.use("/api/auth", authRoutes);
 app.use("/api/doctors", doctorRoutes);
 app.use("/api/availability", availabilityRoutes);
+app.use("/api/appointments", appointmentRoutes);
+
+// Interactive API reference (Scalar) plus the raw OpenAPI JSON for tooling.
+// The spec is generated from JSDoc annotations in src/routes/*.js.
+app.get("/api-docs.json", (req, res) => {
+  res.json(openApiSpec);
+});
+app.use("/api-docs", apiReference({ spec: { content: openApiSpec } }));
 
 app.use((req, res) => {
   res.status(404).json({

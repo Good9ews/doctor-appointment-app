@@ -1,0 +1,31 @@
+const path = require("path");
+const swaggerJsdoc = require("swagger-jsdoc");
+
+const options = {
+  definition: {
+    openapi: "3.0.3",
+    info: {
+      title: "Doctor Appointment API",
+      version: "1.0.0",
+      description:
+        "Patients book appointments with doctors. Reads (doctor directory, availability slots) are public; writes require a Bearer JWT and are scoped to the caller's own records.",
+    },
+    servers: [{ url: "http://localhost:5000", description: "Local development" }],
+    components: {
+      securitySchemes: {
+        bearerAuth: {
+          type: "http",
+          scheme: "bearer",
+          bearerFormat: "JWT",
+          description: "JWT from POST /api/auth/register or POST /api/auth/login",
+        },
+      },
+    },
+    security: [],
+  },
+  apis: [path.join(__dirname, "components.js"), path.join(__dirname, "../routes/*.js")],
+};
+
+const openApiSpec = swaggerJsdoc(options);
+
+module.exports = { openApiSpec };
