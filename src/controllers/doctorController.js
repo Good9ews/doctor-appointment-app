@@ -123,13 +123,13 @@ const createDoctor = async (req, res) => {
     if (error.name === "ValidationError") {
       return res.status(400).json({
         success: false,
-        message: error.message,
+        message: "Doctor data is invalid",
       });
     }
 
     return res.status(500).json({
       success: false,
-      message: error.message,
+      message: "An unexpected error occurred",
     });
   }
 };
@@ -176,13 +176,13 @@ const updateDoctor = async (req, res) => {
     if (error.name === "ValidationError") {
       return res.status(400).json({
         success: false,
-        message: error.message,
+        message: "Doctor data is invalid",
       });
     }
 
     return res.status(500).json({
       success: false,
-      message: error.message,
+      message: "An unexpected error occurred",
     });
   }
 };
@@ -205,7 +205,7 @@ const deleteDoctor = async (req, res) => {
   } catch (error) {
     return res.status(500).json({
       success: false,
-      message: error.message,
+      message: "An unexpected error occurred",
     });
   }
 };
