@@ -20,12 +20,12 @@ const {
 const router = express.Router();
 
 router.get("/", getAllDoctors);
-router.get("/:id", validateDoctorId, getDoctorById);
+router.get("/:id", ...validateDoctorId, getDoctorById);
 router.post(
   "/",
   authenticate,
   authorizeRole("doctor"),
-  validateCreateDoctor,
+  ...validateCreateDoctor,
   authorizeDoctorSelf,
   createDoctor,
 );
@@ -33,8 +33,8 @@ router.put(
   "/:id",
   authenticate,
   authorizeRole("doctor"),
-  validateDoctorId,
-  validateUpdateDoctor,
+  ...validateDoctorId,
+  ...validateUpdateDoctor,
   authorizeDoctorOwner,
   updateDoctor,
 );
@@ -42,7 +42,7 @@ router.delete(
   "/:id",
   authenticate,
   authorizeRole("doctor"),
-  validateDoctorId,
+  ...validateDoctorId,
   authorizeDoctorOwner,
   deleteDoctor,
 );
