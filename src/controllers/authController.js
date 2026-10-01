@@ -2,6 +2,7 @@ const { validationResult } = require("express-validator");
 const User = require("../models/User");
 const { comparePassword } = require("../services/password/hash");
 const { signToken } = require("../services/token/jwt");
+const { revokeToken } = require("../services/token/revocation");
 
 // A fixed, valid bcrypt hash with no known plaintext. Compared against on a login for an
 // email that doesn't exist, so the response takes roughly the same time either way and an
@@ -96,4 +97,14 @@ const me = async (req, res) => {
   });
 };
 
-module.exports = { register, login, me };
+const logout = async (req, res) => {
+  const { jti, exp } = req.tokenPayload;
+  await revokeToken(jti, new Date(exp * 1000));
+
+  return res.status(200).json({
+    success: true,
+    message: "Logged out",
+  });
+};
+
+module.exports = { register, login, me, logout };
