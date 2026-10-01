@@ -1,6 +1,19 @@
-const { body, param } = require("express-validator");
+const { body, param, validationResult } = require("express-validator");
 
-const doctorIdParamRule = [param("id").isMongoId().withMessage("invalid doctor id")];
+const doctorIdParamRule = [
+  param("id").isMongoId().withMessage("invalid doctor id"),
+];
+
+const returnValidationError = (req, res, next) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({
+      success: false,
+      message: errors.array()[0].msg,
+    });
+  }
+  return next();
+};
 
 const requiredString = (field, max) =>
   body(field)
@@ -61,6 +74,7 @@ const createDoctorValidationRules = [
     .trim()
     .isLength({ max: 2000 })
     .withMessage("bio must be at most 2000 characters"),
+  returnValidationError,
 ];
 
 const updateDoctorValidationRules = [
@@ -77,9 +91,10 @@ const updateDoctorValidationRules = [
     .trim()
     .isLength({ max: 2000 })
     .withMessage("bio must be at most 2000 characters"),
+  returnValidationError,
 ];
 
-const doctorIdValidationRules = doctorIdParamRule;
+const doctorIdValidationRules = [...doctorIdParamRule, returnValidationError];
 
 module.exports = {
   createDoctorValidationRules,

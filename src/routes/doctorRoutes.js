@@ -12,21 +12,21 @@ const {
   authorizeDoctorSelf,
 } = require("../middleware/doctorAuthorization");
 const {
-  validateCreateDoctor,
-  validateDoctorId,
-  validateUpdateDoctor,
+  createDoctorValidationRules,
+  doctorIdValidationRules,
+  updateDoctorValidationRules,
 } = require("../services/validation/doctorValidation");
 
 const router = express.Router();
 
 // Reads stay public -- the doctor directory must be browsable for booking.
 router.get("/", getAllDoctors);
-router.get("/:id", ...validateDoctorId, getDoctorById);
+router.get("/:id", ...doctorIdValidationRules, getDoctorById);
 router.post(
   "/",
   authenticate,
   authorizeRole("doctor"),
-  ...validateCreateDoctor,
+  ...createDoctorValidationRules,
   authorizeDoctorSelf,
   createDoctor,
 );
@@ -34,8 +34,8 @@ router.put(
   "/:id",
   authenticate,
   authorizeRole("doctor"),
-  ...validateDoctorId,
-  ...validateUpdateDoctor,
+  ...doctorIdValidationRules,
+  ...updateDoctorValidationRules,
   authorizeDoctorOwner,
   updateDoctor,
 );
@@ -43,7 +43,7 @@ router.delete(
   "/:id",
   authenticate,
   authorizeRole("doctor"),
-  ...validateDoctorId,
+  ...doctorIdValidationRules,
   authorizeDoctorOwner,
   deleteDoctor,
 );

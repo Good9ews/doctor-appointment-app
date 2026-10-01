@@ -10,7 +10,6 @@ const doctorRoutes = require("./routes/doctorRoutes");
 const availabilityRoutes = require("./routes/availabilityRoutes");
 const appointmentRoutes = require("./routes/appointmentRoutes");
 const errorHandler = require("./middleware/errorHandler");
-const { apiReference } = require("@scalar/express-api-reference");
 const { openApiSpec } = require("./docs/openapi");
 
 dotenv.config();
@@ -43,7 +42,19 @@ app.use("/api/appointments", appointmentRoutes);
 app.get("/api-docs.json", (req, res) => {
   res.json(openApiSpec);
 });
-app.use("/api-docs", apiReference({ spec: { content: openApiSpec } }));
+
+let scalarMiddlewarePromise;
+const scalarMiddleware = (req, res, next) => {
+  scalarMiddlewarePromise ??= import("@scalar/express-api-reference").then(
+    ({ apiReference }) => apiReference({ spec: { content: openApiSpec } }),
+  );
+
+  scalarMiddlewarePromise
+    .then((middleware) => middleware(req, res, next))
+    .catch(next);
+};
+
+app.use("/api-docs", scalarMiddleware);
 
 app.use((req, res) => {
   res.status(404).json({
@@ -60,7 +71,9 @@ const startServer = async () => {
   const REQUIRED_ENV_VARS = ["MONGODB_URI", "JWT_SECRET"];
   const missingEnvVars = REQUIRED_ENV_VARS.filter((name) => !process.env[name]);
   if (missingEnvVars.length > 0) {
-    console.error(`Missing required environment variable(s): ${missingEnvVars.join(", ")}`);
+    console.error(
+      `Missing required environment variable(s): ${missingEnvVars.join(", ")}`,
+    );
     process.exit(1);
   }
 
