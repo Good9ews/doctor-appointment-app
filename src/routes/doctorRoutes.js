@@ -6,24 +6,47 @@ const {
   updateDoctor,
   deleteDoctor,
 } = require("../controllers/doctorController");
-const { authenticate } = require("../middleware/auth");
-const { requireRole } = require("../middleware/requireRole");
+const { authenticate, authorizeRole } = require("../middleware/auth");
+const {
+  authorizeDoctorOwner,
+  authorizeDoctorSelf,
+} = require("../middleware/doctorAuthorization");
 const {
   createDoctorValidationRules,
-  updateDoctorValidationRules,
   doctorIdValidationRules,
+  updateDoctorValidationRules,
 } = require("../services/validation/doctorValidation");
 
 const router = express.Router();
 
 // Reads stay public -- the doctor directory must be browsable for booking.
 router.get("/", getAllDoctors);
-router.get("/:id", doctorIdValidationRules, getDoctorById);
-// Writes are doctor self-service: the controller additionally verifies the
-// profile belongs to the caller.
-router.post("/", authenticate, requireRole("doctor"), createDoctorValidationRules, createDoctor);
-router.put("/:id", authenticate, requireRole("doctor"), updateDoctorValidationRules, updateDoctor);
-router.delete("/:id", authenticate, requireRole("doctor"), doctorIdValidationRules, deleteDoctor);
+router.get("/:id", ...doctorIdValidationRules, getDoctorById);
+router.post(
+  "/",
+  authenticate,
+  authorizeRole("doctor"),
+  ...createDoctorValidationRules,
+  authorizeDoctorSelf,
+  createDoctor,
+);
+router.put(
+  "/:id",
+  authenticate,
+  authorizeRole("doctor"),
+  ...doctorIdValidationRules,
+  ...updateDoctorValidationRules,
+  authorizeDoctorOwner,
+  updateDoctor,
+);
+router.delete(
+  "/:id",
+  authenticate,
+  authorizeRole("doctor"),
+  ...doctorIdValidationRules,
+  authorizeDoctorOwner,
+  deleteDoctor,
+);
 
 module.exports = router;
 
