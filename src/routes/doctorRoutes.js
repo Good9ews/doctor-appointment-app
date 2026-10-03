@@ -7,21 +7,18 @@ const {
   updateDoctor,
   deleteDoctor,
 } = require("../controllers/doctorController");
-
 const { authenticate } = require("../middleware/auth");
 const { requireRole } = require("../middleware/requireRole");
-
 const {
   createDoctorValidationRules,
-  updateDoctorValidationRules,
   doctorIdValidationRules,
+  updateDoctorValidationRules,
 } = require("../services/validation/doctorValidation");
 
 const router = express.Router();
 
 // Reads stay public -- the doctor directory must be browsable for booking.
 router.get("/", getAllDoctors);
-
 router.get(
   "/:id",
   doctorIdValidationRules,
@@ -54,6 +51,7 @@ router.delete(
   doctorIdValidationRules,
   deleteDoctor
 );
+
 
 module.exports = router;
 

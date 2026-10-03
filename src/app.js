@@ -105,7 +105,8 @@ const startServer = async () => {
 
   if (missingEnvVars.length > 0) {
     console.error(
-      `Missing required environment variable(s): ${missingEnvVars.join(", ")}`
+`Missing required environment variable(s): ${missingEnvVars.join(", ")}`
+);
     );
     process.exit(1);
   }
