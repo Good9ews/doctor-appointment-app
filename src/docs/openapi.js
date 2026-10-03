@@ -12,8 +12,8 @@ const options = {
     },
     servers: [
       {
-        url: "http://localhost:5000",
-        description: "Local development",
+        url: "https://doctex-backend.onrender.com",
+description: "Production",
       },
     ],
     components: {
