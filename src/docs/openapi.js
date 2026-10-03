@@ -10,20 +10,33 @@ const options = {
       description:
         "Patients book appointments with doctors. Reads (doctor directory, availability slots) are public; writes require a Bearer JWT and are scoped to the caller's own records.",
     },
-    servers: [{ url: "http://localhost:5000", description: "Local development" }],
+    servers: [
+      {
+        url: "http://localhost:5000",
+        description: "Local development",
+      },
+    ],
     components: {
       securitySchemes: {
         bearerAuth: {
           type: "http",
           scheme: "bearer",
           bearerFormat: "JWT",
-          description: "JWT from POST /api/auth/register or POST /api/auth/login",
+          description:
+            "JWT from POST /api/auth/register or POST /api/auth/login",
         },
       },
     },
     security: [],
   },
-  apis: [path.join(__dirname, "components.js"), path.join(__dirname, "../routes/*.js")],
+
+  apis: [
+    path.join(__dirname, "components.js"),
+    path.join(__dirname, "../routes/authRoutes.js"),
+    path.join(__dirname, "../routes/doctorRoutes.js"),
+    path.join(__dirname, "../routes/availabilityRoutes.js"),
+    path.join(__dirname, "../routes/appointmentRoutes.js"),
+  ],
 };
 
 const openApiSpec = swaggerJsdoc(options);

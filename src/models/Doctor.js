@@ -41,9 +41,13 @@ const doctorSchema = new mongoose.Schema(
     },
 
     bio: {
+  type: String,
+  trim: true,
+  default: "",
+},
+    image: {
       type: String,
-      trim: true,
-      default: "",
+      required: true,
     },
   },
   {

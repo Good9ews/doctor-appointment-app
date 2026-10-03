@@ -2,6 +2,7 @@ const dns = require("dns");
 dns.setServers(["8.8.8.8", "8.8.4.4"]);
 
 const express = require("express");
+const cors = require("cors");
 const dotenv = require("dotenv");
 const helmet = require("helmet");
 const connectDB = require("./config/database");
@@ -10,14 +11,32 @@ const doctorRoutes = require("./routes/doctorRoutes");
 const availabilityRoutes = require("./routes/availabilityRoutes");
 const appointmentRoutes = require("./routes/appointmentRoutes");
 const errorHandler = require("./middleware/errorHandler");
-const { apiReference } = require("@scalar/express-api-reference");
 const { openApiSpec } = require("./docs/openapi");
 
 dotenv.config();
 
 const app = express();
 
-app.use(helmet());
+app.use(
+  cors({
+    origin: "http://localhost:5173",
+  })
+);
+
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        "script-src": [
+          "'self'",
+          "'unsafe-inline'",
+          "https://cdn.jsdelivr.net",
+        ],
+        "style-src": ["'self'", "'unsafe-inline'", "https:"],
+      },
+    },
+  })
+);
 
 // Single reverse-proxy hop (e.g. a PaaS router or one Nginx/load-balancer in front of the
 // app). Needed so req.ip reflects the real client, not the proxy -- otherwise every client
@@ -43,7 +62,28 @@ app.use("/api/appointments", appointmentRoutes);
 app.get("/api-docs.json", (req, res) => {
   res.json(openApiSpec);
 });
-app.use("/api-docs", apiReference({ spec: { content: openApiSpec } }));
+
+app.use("/api-docs", (req, res, next) => {
+  res.removeHeader("Content-Security-Policy");
+  next();
+});
+
+// Load Scalar only when the API documentation page is requested.
+// This prevents Jest from trying to load Scalar's ESM package
+// while importing the Express app during tests.
+app.use("/api-docs", async (req, res, next) => {
+  try {
+    const { apiReference } = await import(
+      "@scalar/express-api-reference"
+    );
+
+    return apiReference({
+      content: openApiSpec,
+    })(req, res, next);
+  } catch (error) {
+    next(error);
+  }
+});
 
 app.use((req, res) => {
   res.status(404).json({
@@ -58,9 +98,15 @@ const PORT = process.env.PORT || 5000;
 
 const startServer = async () => {
   const REQUIRED_ENV_VARS = ["MONGODB_URI", "JWT_SECRET"];
-  const missingEnvVars = REQUIRED_ENV_VARS.filter((name) => !process.env[name]);
+
+  const missingEnvVars = REQUIRED_ENV_VARS.filter(
+    (name) => !process.env[name]
+  );
+
   if (missingEnvVars.length > 0) {
-    console.error(`Missing required environment variable(s): ${missingEnvVars.join(", ")}`);
+    console.error(
+      `Missing required environment variable(s): ${missingEnvVars.join(", ")}`
+    );
     process.exit(1);
   }
 

@@ -48,7 +48,6 @@ const phoneRule = (optional) => {
 };
 
 const createDoctorValidationRules = [
-  body("user").isMongoId().withMessage("user must be a valid user id"),
   requiredString("name", 120),
   requiredString("specialization", 120),
   emailRule(false),

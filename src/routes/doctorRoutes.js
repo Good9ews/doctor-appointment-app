@@ -1,4 +1,5 @@
 const express = require("express");
+
 const {
   getAllDoctors,
   getDoctorById,
@@ -6,8 +7,10 @@ const {
   updateDoctor,
   deleteDoctor,
 } = require("../controllers/doctorController");
+
 const { authenticate } = require("../middleware/auth");
 const { requireRole } = require("../middleware/requireRole");
+
 const {
   createDoctorValidationRules,
   updateDoctorValidationRules,
@@ -18,12 +21,39 @@ const router = express.Router();
 
 // Reads stay public -- the doctor directory must be browsable for booking.
 router.get("/", getAllDoctors);
-router.get("/:id", doctorIdValidationRules, getDoctorById);
-// Writes are doctor self-service: the controller additionally verifies the
-// profile belongs to the caller.
-router.post("/", authenticate, requireRole("doctor"), createDoctorValidationRules, createDoctor);
-router.put("/:id", authenticate, requireRole("doctor"), updateDoctorValidationRules, updateDoctor);
-router.delete("/:id", authenticate, requireRole("doctor"), doctorIdValidationRules, deleteDoctor);
+
+router.get(
+  "/:id",
+  doctorIdValidationRules,
+  getDoctorById
+);
+
+// Writes are doctor self-service.
+// The authenticated user's ID is used by the controller to link the profile
+// to the currently signed-in doctor.
+router.post(
+  "/",
+  authenticate,
+  requireRole("doctor"),
+  createDoctorValidationRules,
+  createDoctor
+);
+
+router.put(
+  "/:id",
+  authenticate,
+  requireRole("doctor"),
+  updateDoctorValidationRules,
+  updateDoctor
+);
+
+router.delete(
+  "/:id",
+  authenticate,
+  requireRole("doctor"),
+  doctorIdValidationRules,
+  deleteDoctor
+);
 
 module.exports = router;
 
@@ -68,10 +98,11 @@ module.exports = router;
  *                   type: array
  *                   items:
  *                     $ref: '#/components/schemas/Doctor'
+ *
  *   post:
  *     tags: [Doctors]
  *     summary: Create your doctor profile
- *     description: Callers can only create a profile linked to their own account.
+ *     description: The authenticated doctor's account is automatically linked to the profile.
  *     security:
  *       - bearerAuth: []
  *     requestBody:
@@ -80,28 +111,31 @@ module.exports = router;
  *         application/json:
  *           schema:
  *             type: object
- *             required: [user, name, specialization, email, phone, location]
+ *             required:
+ *               - name
+ *               - specialization
+ *               - email
+ *               - phone
+ *               - location
  *             properties:
- *               user:
- *                 type: string
- *                 description: Your own user id
  *               name:
  *                 type: string
- *                 example: Greg House
+ *                 example: Gabriel Adam
  *               specialization:
  *                 type: string
- *                 example: Diagnostics
+ *                 example: Dermatology
  *               email:
  *                 type: string
- *                 example: house@example.com
+ *                 example: gabriel@doctex.com
  *               phone:
  *                 type: string
- *                 example: +15551234567
+ *                 example: 08012345678
  *               location:
  *                 type: string
- *                 example: Princeton
+ *                 example: Lagos
  *               bio:
  *                 type: string
+ *                 example: Dermatologist available for appointments.
  *     responses:
  *       201:
  *         description: Profile created
@@ -113,26 +147,33 @@ module.exports = router;
  *                 success:
  *                   type: boolean
  *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: Doctor profile created successfully
  *                 data:
  *                   $ref: '#/components/schemas/Doctor'
+ *
  *       400:
  *         description: Invalid input
  *         content:
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/Error'
+ *
  *       401:
  *         description: Missing or invalid token
  *         content:
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/Error'
+ *
  *       403:
- *         description: Not a doctor account, or profile for another user
+ *         description: User is not a doctor account
  *         content:
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/Error'
+ *
  *       409:
  *         description: Profile already exists for this user
  *         content:
@@ -163,18 +204,21 @@ module.exports = router;
  *                   example: true
  *                 data:
  *                   $ref: '#/components/schemas/Doctor'
+ *
  *       400:
  *         description: Malformed id
  *         content:
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/Error'
+ *
  *       404:
  *         description: Doctor not found
  *         content:
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/Error'
+ *
  *   put:
  *     tags: [Doctors]
  *     summary: Update your doctor profile
@@ -215,32 +259,40 @@ module.exports = router;
  *                 success:
  *                   type: boolean
  *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: Doctor profile updated successfully
  *                 data:
  *                   $ref: '#/components/schemas/Doctor'
+ *
  *       400:
  *         description: Invalid input or malformed id
  *         content:
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/Error'
+ *
  *       401:
  *         description: Missing or invalid token
  *         content:
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/Error'
+ *
  *       403:
  *         description: Another user's profile
  *         content:
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/Error'
+ *
  *       404:
  *         description: Doctor not found
  *         content:
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/Error'
+ *
  *   delete:
  *     tags: [Doctors]
  *     summary: Delete your doctor profile
@@ -265,18 +317,22 @@ module.exports = router;
  *                   example: true
  *                 message:
  *                   type: string
+ *                   example: Doctor profile deleted successfully
+ *
  *       401:
  *         description: Missing or invalid token
  *         content:
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/Error'
+ *
  *       403:
  *         description: Another user's profile
  *         content:
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/Error'
+ *
  *       404:
  *         description: Doctor not found
  *         content:
