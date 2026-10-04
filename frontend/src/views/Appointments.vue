@@ -137,7 +137,7 @@
             </span>
 
             <router-link
-              v-if="appointment.doctor?._id"
+              v-if="appointment.doctor?._id && !isDoctor"
               :to="`/doctors/${appointment.doctor._id}`"
               class="outline-button"
             >
