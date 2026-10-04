@@ -162,6 +162,14 @@
             >
               Accept Appointment
             </button>
+
+            <button
+              v-if="isDoctor && appointment.status === 'confirmed'"
+              class="accept-button"
+              @click="completeAppointment(appointment._id)"
+            >
+              Mark Completed
+            </button>
           </div>
         </article>
       </div>
@@ -283,6 +291,26 @@ const acceptAppointment = async appointmentId => {
     window.alert(
       err.response?.data?.message ||
       'Unable to accept this appointment.'
+    )
+  }
+}
+
+const completeAppointment = async appointmentId => {
+  const confirmed = window.confirm(
+    'Mark this appointment as completed?'
+  )
+
+  if (!confirmed) return
+
+  try {
+    await api.patch(`/appointments/${appointmentId}/status`, {
+      status: 'completed'
+    })
+    await loadAppointments()
+  } catch (err) {
+    window.alert(
+      err.response?.data?.message ||
+      'Unable to complete this appointment.'
     )
   }
 }
