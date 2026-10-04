@@ -2123,6 +2123,21 @@ button {
   background: #fef2f2;
 }
 
+.slot-action-button.accept {
+  color: #15803d;
+  border-color: #bbf7d0;
+}
+
+.slot-action-button.accept:hover {
+  background: #f0fdf4;
+}
+
+.slot-patient {
+  font-size: 12px;
+  font-weight: 600;
+  color: #475569;
+}
+
 .edit-actions {
   display: flex;
   align-items: center;

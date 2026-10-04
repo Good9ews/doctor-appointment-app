@@ -400,6 +400,26 @@
 
             </div>
 
+            <div
+              v-else-if="appointmentBySlot[slot._id]"
+              class="slot-actions"
+            >
+
+              <span class="slot-patient">
+                Booked by {{ appointmentBySlot[slot._id].patient?.name || appointmentBySlot[slot._id].patient?.email || 'a patient' }}
+              </span>
+
+              <button
+                v-if="appointmentBySlot[slot._id].status === 'pending'"
+                type="button"
+                class="slot-action-button accept"
+                @click="acceptBooking(appointmentBySlot[slot._id]._id)"
+              >
+                Accept Booking
+              </button>
+
+            </div>
+
           </div>
 
         </div>
@@ -507,6 +527,7 @@ const user = ref(null)
 const doctorId = ref(null)
 
 const availability = ref([])
+const appointments = ref([])
 
 const loading = ref(false)
 const formLoading = ref(false)
@@ -552,6 +573,26 @@ const weekdays = [
 
 const userName = computed(() => {
   return user.value?.name || 'Doctor'
+})
+
+// Active appointment per slot, keyed by slot id. A pending appointment wins
+// over older ones (e.g. a cancelled booking followed by a rebook).
+const appointmentBySlot = computed(() => {
+  const map = {}
+
+  for (const appointment of appointments.value) {
+    const slotId = String(
+      appointment.availability?._id || appointment.availability || ''
+    )
+
+    if (!slotId) continue
+
+    if (!map[slotId] || appointment.status === 'pending') {
+      map[slotId] = appointment
+    }
+  }
+
+  return map
 })
 
 const clearMessages = () => {
@@ -630,6 +671,47 @@ const loadAvailability = async () => {
       'Unable to load availability.'
   } finally {
     loading.value = false
+  }
+}
+
+const loadAppointments = async () => {
+  try {
+    const response = await api.get('/appointments')
+
+    appointments.value =
+      response.data.data ||
+      response.data.appointments ||
+      []
+  } catch (error) {
+    console.error('Unable to load appointments:', error)
+
+    appointments.value = []
+  }
+}
+
+const acceptBooking = async (appointmentId) => {
+  const confirmed = window.confirm(
+    'Accept this booking?'
+  )
+
+  if (!confirmed) return
+
+  clearMessages()
+
+  try {
+    await api.patch(
+      `/appointments/${appointmentId}/status`,
+      { status: 'confirmed' }
+    )
+
+    message.value = 'Booking accepted.'
+
+    await loadAppointments()
+    await loadAvailability()
+  } catch (error) {
+    errorMessage.value =
+      error.response?.data?.message ||
+      'Unable to accept this booking.'
   }
 }
 
@@ -849,5 +931,6 @@ onMounted(async () => {
   await loadDoctor()
 
   await loadAvailability()
+  await loadAppointments()
 })
 </script>

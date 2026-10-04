@@ -23,6 +23,13 @@
 
       <router-link
         v-if="user && user.role === 'doctor'"
+        to="/appointments"
+      >
+        Appointments
+      </router-link>
+
+      <router-link
+        v-if="user && user.role === 'doctor'"
         to="/doctor/dashboard"
       >
         Dashboard
