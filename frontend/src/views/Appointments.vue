@@ -154,6 +154,14 @@
             >
               Cancel Appointment
             </button>
+
+            <button
+              v-if="isDoctor && appointment.status === 'pending'"
+              class="accept-button"
+              @click="acceptAppointment(appointment._id)"
+            >
+              Accept Appointment
+            </button>
           </div>
         </article>
       </div>
@@ -169,6 +177,18 @@ const appointments = ref([])
 const loading = ref(true)
 const error = ref('')
 const selectedTab = ref('all')
+
+const storedUser = localStorage.getItem('doctex_user')
+
+let currentUser = null
+
+try {
+  currentUser = storedUser ? JSON.parse(storedUser) : null
+} catch {
+  currentUser = null
+}
+
+const isDoctor = computed(() => currentUser?.role === 'doctor')
 
 const loadAppointments = async () => {
   loading.value = true
@@ -243,6 +263,26 @@ const cancelAppointment = async appointmentId => {
     window.alert(
       err.response?.data?.message ||
       'Unable to cancel this appointment.'
+    )
+  }
+}
+
+const acceptAppointment = async appointmentId => {
+  const confirmed = window.confirm(
+    'Accept this appointment?'
+  )
+
+  if (!confirmed) return
+
+  try {
+    await api.patch(`/appointments/${appointmentId}/status`, {
+      status: 'confirmed'
+    })
+    await loadAppointments()
+  } catch (err) {
+    window.alert(
+      err.response?.data?.message ||
+      'Unable to accept this appointment.'
     )
   }
 }

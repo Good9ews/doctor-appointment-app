@@ -45,6 +45,7 @@ const makeProfile = (user) =>
     email: `doc-${Date.now()}-${emailCounter++}@example.com`,
     phone: "+15551234567",
     location: "Princeton",
+    image: "https://example.com/house.jpg",
   });
 
 const futureDate = (daysAhead = 7) => {

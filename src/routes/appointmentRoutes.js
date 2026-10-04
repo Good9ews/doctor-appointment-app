@@ -18,11 +18,143 @@ router.get("/", listAppointmentsValidationRules, listMine);
 router.get("/:id", appointmentIdValidationRules, getOne);
 router.patch("/:id/status", updateStatusValidationRules, updateStatus);
 router.patch("/:id/cancel", appointmentIdValidationRules, cancel);
+// Kept alongside PATCH /:id/cancel: historically the cancel endpoint, still
+// referenced by existing clients and tests.
+router.delete("/:id", appointmentIdValidationRules, cancel);
 
 module.exports = router;
 
 /**
  * @swagger
+ * tags:
+ *   - name: Appointments
+ *     description: Booking (patient booking, owner-scoped reads and updates)
+ *
+ * /api/appointments:
+ *   post:
+ *     tags: [Appointments]
+ *     summary: Book an appointment
+ *     description: Claims the slot atomically, so concurrent bookings cannot double-book. Times are HH:mm within the slot's window; date is ISO 8601 and never in the past.
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [doctorId, availabilityId, appointmentDate, startTime, endTime]
+ *             properties:
+ *               doctorId:
+ *                 type: string
+ *               availabilityId:
+ *                 type: string
+ *               appointmentDate:
+ *                 type: string
+ *                 format: date-time
+ *               startTime:
+ *                 type: string
+ *                 example: 09:30
+ *               endTime:
+ *                 type: string
+ *                 example: 10:00
+ *     responses:
+ *       201:
+ *         description: Appointment booked
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   $ref: '#/components/schemas/Appointment'
+ *       400:
+ *         description: Invalid input, bad time order/window, or past date
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       401:
+ *         description: Missing or invalid token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       403:
+ *         description: Only patients can book
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       404:
+ *         description: Doctor or slot not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       409:
+ *         description: Slot taken or time already booked
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *   get:
+ *     tags: [Appointments]
+ *     summary: List your appointments
+ *     description: Patients see their own; doctors see appointments for their own profile.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *           enum: [pending, confirmed, cancelled, completed]
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *     responses:
+ *       200:
+ *         description: Own appointments, paginated
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 count:
+ *                   type: integer
+ *                 pagination:
+ *                   $ref: '#/components/schemas/Pagination'
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/Appointment'
+ *       400:
+ *         description: Invalid query
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       401:
+ *         description: Missing or invalid token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *
  * /api/appointments/{id}:
  *   get:
  *     tags: [Appointments]
@@ -72,9 +204,7 @@ module.exports = router;
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/Error'
- *
- * /api/appointments/{id}/cancel:
- *   patch:
+ *   delete:
  *     tags: [Appointments]
  *     summary: Cancel your appointment (owner only)
  *     description: Cancelling frees the availability slot for rebooking.
@@ -175,6 +305,57 @@ module.exports = router;
  *               $ref: '#/components/schemas/Error'
  *       403:
  *         description: Not your appointment, or patients setting non-cancelled status
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       404:
+ *         description: Appointment not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *
+ * /api/appointments/{id}/cancel:
+ *   patch:
+ *     tags: [Appointments]
+ *     summary: Cancel your appointment (owner only)
+ *     description: Cancelling frees the availability slot for rebooking. Equivalent to DELETE /api/appointments/{id}.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Appointment cancelled
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   $ref: '#/components/schemas/Appointment'
+ *       400:
+ *         description: Malformed id, or cannot cancel from this state
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       401:
+ *         description: Missing or invalid token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       403:
+ *         description: Not your appointment
  *         content:
  *           application/json:
  *             schema:
