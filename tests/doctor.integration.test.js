@@ -81,14 +81,16 @@ describe("POST /api/doctors", () => {
     expect(res.body.success).toBe(false);
   });
 
-  test("rejects a non-ObjectId user with 400", async () => {
+  test("ignores a user field in the body and links the caller's account", async () => {
+    // The controller derives the owner from the token, never the body.
     const user = await makeUser();
     const res = await request(app)
       .post("/api/doctors")
       .set(auth(tokenFor(user)))
       .send({ ...validProfile(new mongoose.Types.ObjectId()), user: "nope" });
 
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(201);
+    expect(res.body.data.user._id.toString()).toBe(user._id.toString());
   });
 
   test("rejects patients with 403", async () => {
@@ -101,7 +103,7 @@ describe("POST /api/doctors", () => {
     expect(res.status).toBe(403);
   });
 
-  test("rejects creating a profile for another user with 403", async () => {
+  test("a user field for another account is ignored; caller gets own profile", async () => {
     const first = await makeUser();
     const second = await makeUser();
     const res = await request(app)
@@ -109,7 +111,8 @@ describe("POST /api/doctors", () => {
       .set(auth(tokenFor(first)))
       .send(validProfile(second._id));
 
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(201);
+    expect(res.body.data.user._id.toString()).toBe(first._id.toString());
   });
 
   test("rejects a duplicate profile for the same user with 409", async () => {

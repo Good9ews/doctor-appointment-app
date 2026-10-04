@@ -49,6 +49,7 @@ const makeDoctorProfile = async (user) =>
     email: uniqueEmail(),
     phone: "+15551234567",
     location: "Princeton",
+    image: "https://example.com/house.jpg",
   });
 
 const futureDate = (daysAhead = 7) => {

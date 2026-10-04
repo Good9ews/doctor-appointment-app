@@ -45,6 +45,7 @@ const makeProfile = (user) =>
     email: `recdoc-${Date.now()}-${emailCounter++}@example.com`,
     phone: "+15551234567",
     location: "Princeton",
+    image: "https://example.com/house.jpg",
   });
 
 const setup = async () => {
